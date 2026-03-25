@@ -1,0 +1,45 @@
+name = "stm32g4_ghal"
+description = ""
+version = "0.1.0-dev"
+
+authors = ["Olivier Henley"]
+maintainers = ["Olivier Henley <olivier.henley@gmail.com>"]
+maintainers-logins = ["ohenley"]
+licenses = "MIT OR Apache-2.0 WITH LLVM-exception"
+website = ""
+tags = []
+
+[[depends-on]]
+light_tasking_stm32g4xx = "*"
+gpio_generic = "*"
+i2c_generic = "*"
+usart_generic = "*"
+gnat_arm_elf = "*"
+
+[[pins]]
+gpio_generic = { path = "../gpio_generic" }
+i2c_generic = { path = "../i2c_generic" }
+usart_generic = { path = "../usart_generic" }
+
+[configuration.values]
+# Target microcontroller
+light_tasking_stm32g4xx.MCU_Sub_Family        = "G431"
+light_tasking_stm32g4xx.MCU_Flash_Memory_Size = "B"
+
+# Nucleo-G431KB default clocking:
+# use internal HSI16 so startup does not block waiting for an external HSE.
+light_tasking_stm32g4xx.SYSCLK_Src = "HSI16"
+light_tasking_stm32g4xx.PLL_Src    = "HSI16"
+
+# PLL math:
+# 24 MHz / 4 = 6 MHz (VCO input)
+# 6 MHz * 40 = 240 MHz (VCO)
+# 240 MHz / 2 = 120 MHz (SYSCLK)
+light_tasking_stm32g4xx.PLL_M_Div = 4
+light_tasking_stm32g4xx.PLL_N_Mul = 40
+light_tasking_stm32g4xx.PLL_R_Div = "DIV2"
+
+# Bus prescalers
+light_tasking_stm32g4xx.AHB_Pre  = "DIV1"
+light_tasking_stm32g4xx.APB1_Pre = "DIV1"
+light_tasking_stm32g4xx.APB2_Pre = "DIV1"

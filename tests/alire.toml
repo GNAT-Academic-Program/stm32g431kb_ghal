@@ -1,0 +1,13 @@
+name = "stm32g4_ghal_tests"
+description = "Tests for the built-in Alire test runner"
+version = "0.0.0-test"
+
+[[depends-on]]
+stm32g4_ghal = "*"
+
+[[pins]]
+stm32g4_ghal = { path = ".." }
+
+[build-profiles]
+stm32g4_ghal       = "validation"
+stm32g4_ghal_tests = "validation"

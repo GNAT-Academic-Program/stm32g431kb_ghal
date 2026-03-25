@@ -1,0 +1,35 @@
+with "config/stm32g4_ghal_config.gpr";
+with "ravenscar_build.gpr";
+with "runtime_build.gpr";
+project Stm32g4_ghal is
+
+   for Target use runtime_build'Target;
+   for Runtime ("Ada") use runtime_build'Runtime ("Ada");
+
+   for Library_Name use "Stm32g4_ghal";
+   for Library_Version use
+     Project'Library_Name & ".so." & Stm32g4_ghal_Config.Crate_Version;
+
+   for Source_Dirs use ("src/**", "src/svd/**", "config/");
+   for Object_Dir use "obj/" & Stm32g4_ghal_Config.Build_Profile;
+   for Create_Missing_Dirs use "True";
+   for Library_Dir use "lib";
+
+   type Library_Type_Type is ("relocatable", "static", "static-pic");
+   Library_Type : Library_Type_Type :=
+     external ("STM32G4_ghal_LIBRARY_TYPE", external ("LIBRARY_TYPE", "static"));
+   for Library_Kind use Library_Type;
+
+   package Compiler is
+      for Default_Switches ("Ada") use ("-gnat2022", "-g", "-Og");
+   end Compiler;
+
+   package Binder is
+      for Switches ("Ada") use ("-Es"); --  Symbolic traceback
+   end Binder;
+
+   package Install is
+      for Artifacts (".") use ("share");
+   end Install;
+
+end Stm32g4_ghal;
