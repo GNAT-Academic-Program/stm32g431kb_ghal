@@ -1,5 +1,5 @@
-with "config/stm32g4_ghal_tests_config.gpr";
-with "config/stm32g4_ghal_tests_list_config.gpr";
+with "config/stm32g431_tests_config.gpr";
+with "config/stm32g431_tests_list_config.gpr";
 
 project Stm32g4_Ghal_Tests is
    for Source_Dirs use ("src/**", "common/", "config/");

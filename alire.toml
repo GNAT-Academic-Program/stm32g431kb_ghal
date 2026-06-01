@@ -1,4 +1,4 @@
-name = "stm32g4_ghal"
+name = "stm32g431"
 description = ""
 version = "0.1.0-dev"
 
@@ -11,39 +11,41 @@ tags = []
 
 [[depends-on]]
 light_tasking_stm32g4xx = "*"
-gpio_generic = "*"
-i2c_generic = "*"
-usart_generic = "*"
-spi_generic = "*"
-gnat_arm_elf = "*"
-machine_types = "*"
+gpio_generic            = "*"
+i2c_generic             = "*"
+usart_generic           = "*"
+spi_generic             = "*"
+gnat_arm_elf            = "*"
+machine_types           = "*"
+debug_generic           = "*"
 
 [[pins]]
-gpio_generic = { path = "../gpio_generic" }
-i2c_generic = { path = "../i2c_generic" }
-usart_generic = { path = "../usart_generic" }
-spi_generic = { path = "../spi_generic" }
-machine_types = { path = "../machine_types" }
+gpio_generic  = { url = "https://github.com/GNAT-Academic-Program/gpio_generic.git", branch = "main" }
+i2c_generic   = { url = "https://github.com/GNAT-Academic-Program/i2c_generic.git", branch = "main" }
+usart_generic = { url = "https://github.com/GNAT-Academic-Program/usart_generic.git", branch = "main" }
+spi_generic   = { url = "https://github.com/GNAT-Academic-Program/spi_generic.git", branch = "main" }
+machine_types = { url = "https://github.com/GNAT-Academic-Program/machine_types.git", branch = "main" }
+debug_generic = { url = "https://github.com/GNAT-Academic-Program/debug_generic.git", branch = "main" }
 
-[configuration.values]
-# Target microcontroller
-light_tasking_stm32g4xx.MCU_Sub_Family        = "G431"
-light_tasking_stm32g4xx.MCU_Flash_Memory_Size = "B"
+# ----------------------------------------------------------------------------
+# Clock configuration variables
+#
+# Naming and value sets are kept in sync with light_tasking_stm32g4xx so that
+# a depending board crate can declare the same physical clocking once per
+# crate, with identical keys and values on both sides.
+#
+# Consumers (e.g. Clock_Tree) read these via the Alire-generated
+# Stm32g431_Config package.
+# ----------------------------------------------------------------------------
 
-# Nucleo-G431KB default clocking:
-# use internal HSI16 so startup does not block waiting for an external HSE.
-light_tasking_stm32g4xx.SYSCLK_Src = "HSI16"
-light_tasking_stm32g4xx.PLL_Src    = "HSI16"
-
-# PLL math:
-# 24 MHz / 4 = 6 MHz (VCO input)
-# 6 MHz * 40 = 240 MHz (VCO)
-# 240 MHz / 2 = 120 MHz (SYSCLK)
-light_tasking_stm32g4xx.PLL_M_Div = 4
-light_tasking_stm32g4xx.PLL_N_Mul = 40
-light_tasking_stm32g4xx.PLL_R_Div = "DIV2"
-
-# Bus prescalers
-light_tasking_stm32g4xx.AHB_Pre  = "DIV1"
-light_tasking_stm32g4xx.APB1_Pre = "DIV1"
-light_tasking_stm32g4xx.APB2_Pre = "DIV1"
+[configuration.variables]
+SYSCLK_Src = { type = "Enum",    values = ["HSI16", "HSE", "PLLRCLK"],                      default = "HSI16" }
+PLL_Src    = { type = "Enum",    values = ["HSI16", "HSE"],                                 default = "HSI16" }
+HSE_Hz     = { type = "Integer", first  = 0,   last = 48_000_000,                           default = 0       }
+PLL_M_Div  = { type = "Integer", first  = 1,   last = 16,                                   default = 1       }
+PLL_N_Mul  = { type = "Integer", first  = 8,   last = 127,                                  default = 8       }
+PLL_R_Div  = { type = "Enum",    values = ["DIV2", "DIV4", "DIV6", "DIV8"],                 default = "DIV2"  }
+AHB_Pre    = { type = "Enum",    values = ["DIV1", "DIV2", "DIV4", "DIV8", "DIV16",
+                                           "DIV64", "DIV128", "DIV256", "DIV512"],          default = "DIV1"  }
+APB1_Pre   = { type = "Enum",    values = ["DIV1", "DIV2", "DIV4", "DIV8", "DIV16"],        default = "DIV1"  }
+APB2_Pre   = { type = "Enum",    values = ["DIV1", "DIV2", "DIV4", "DIV8", "DIV16"],        default = "DIV1"  }

@@ -1,49 +1,76 @@
-with System.BB.Board_Parameters; use System.BB.Board_Parameters;
+--  TODO: patch SVD upstream — fields SP3EN, I2C3 (in APB1ENR1 and
+--  APB1RSTR1), SP3SMEN, I2C3SMEN_3 are svd2ada artifacts of ST's broken
+--  SVD. Fix once crate stack is stable; will let us drop the inline
+--  apology comments in this file.
+
+with Stm32g431_Config;
 with STM32G431xx.RCC;
 
 package body Clock_Tree is
 
    use STM32G431xx;
 
-   --  LSE frequency -- 32.768 kHz standard crystal
-   LSE_Freq : constant Natural := 32_768;
+   --  ----------------------------------------------------------------------
+   --  Fixed MCU constants
+   --  ----------------------------------------------------------------------
 
-   --  HSI16 frequency -- fixed 16 MHz internal oscillator
    HSI16_Freq : constant Natural := 16_000_000;
+   LSE_Freq   : constant Natural := 32_768;
 
-   --  SYSCLK_Freq is imported from System.BB.Board_Parameters.
-   --  It reflects the configured system clock (e.g. HSI16 = 16 MHz, or PLL
-   --  output). All downstream frequency calculations derive from it.
+   --  ----------------------------------------------------------------------
+   --  SYSCLK computation from Alire config
+   --  ----------------------------------------------------------------------
 
-   ---------------
-   -- Get_HCLK  --
-   ---------------
-   --  SYSCLK divided by the AHB prescaler (HPRE field, bits 4..7 of RCC_CFGR).
-   --  Encoding: 0b0xxx => /1, 0b1000 => /2, ..., 0b1111 => /512.
+   function PLL_R_Divisor return Natural is
+   begin
+      case Stm32g431_Config.PLL_R_Div is
+         when Stm32g431_Config.DIV2 => return 2;
+         when Stm32g431_Config.DIV4 => return 4;
+         when Stm32g431_Config.DIV6 => return 6;
+         when Stm32g431_Config.DIV8 => return 8;
+      end case;
+   end PLL_R_Divisor;
+
+   function PLL_Input_Freq return Natural is
+   begin
+      case Stm32g431_Config.PLL_Src is
+         when Stm32g431_Config.HSI16 => return HSI16_Freq;
+         when Stm32g431_Config.HSE   => return Stm32g431_Config.HSE_Hz;
+      end case;
+   end PLL_Input_Freq;
+
+   function Compute_SYSCLK return Natural is
+   begin
+      case Stm32g431_Config.SYSCLK_Src is
+         when Stm32g431_Config.HSI16   => return HSI16_Freq;
+         when Stm32g431_Config.HSE     => return Stm32g431_Config.HSE_Hz;
+         when Stm32g431_Config.PLLRCLK =>
+            return (PLL_Input_Freq / Stm32g431_Config.PLL_M_Div)
+                  * Stm32g431_Config.PLL_N_Mul
+                  / PLL_R_Divisor;
+      end case;
+   end Compute_SYSCLK;
+
+   SYSCLK_Freq : constant Natural := Compute_SYSCLK;
+
+   --  ----------------------------------------------------------------------
+   --  Bus clocks (read live from RCC prescalers)
+   --  ----------------------------------------------------------------------
 
    function Get_HCLK return Natural is
    begin
       case RCC.RCC_Periph.CFGR.HPRE is
          when 16#0# .. 16#7# => return SYSCLK_Freq;
-         when 16#8#           => return SYSCLK_Freq / 2;
-         when 16#9#           => return SYSCLK_Freq / 4;
-         when 16#A#           => return SYSCLK_Freq / 8;
-         when 16#B#           => return SYSCLK_Freq / 16;
-         when 16#C#           => return SYSCLK_Freq / 64;
-         when 16#D#           => return SYSCLK_Freq / 128;
-         when 16#E#           => return SYSCLK_Freq / 256;
-         when others          => return SYSCLK_Freq / 512;
+         when 16#8#          => return SYSCLK_Freq / 2;
+         when 16#9#          => return SYSCLK_Freq / 4;
+         when 16#A#          => return SYSCLK_Freq / 8;
+         when 16#B#          => return SYSCLK_Freq / 16;
+         when 16#C#          => return SYSCLK_Freq / 64;
+         when 16#D#          => return SYSCLK_Freq / 128;
+         when 16#E#          => return SYSCLK_Freq / 256;
+         when 16#F#          => return SYSCLK_Freq / 512;
       end case;
    end Get_HCLK;
-
-   ----------------
-   -- Get_PCLK1  --
-   ----------------
-   --  HCLK divided by the APB1 prescaler (PPRE1, bits 8..10 of RCC_CFGR).
-   --  The SVD exposes the combined 6-bit PPRE field as a union; Arr(0) gives
-   --  the low 3 bits (PPRE1) and Arr(1) gives the high 3 bits (PPRE2).
-   --  Encoding: 0b0xx => /1, 0b100 => /2, 0b101 => /4, 0b110 => /8,
-   --            0b111 => /16.
 
    function Get_PCLK1 return Natural is
       HCLK  : constant Natural := Get_HCLK;
@@ -52,18 +79,13 @@ package body Clock_Tree is
    begin
       case PPRE1 is
          when 16#0# .. 16#3# => return HCLK;
-         when 16#4#           => return HCLK / 2;
-         when 16#5#           => return HCLK / 4;
-         when 16#6#           => return HCLK / 8;
-         when others          => return HCLK / 16;
+         when 16#4#          => return HCLK / 2;
+         when 16#5#          => return HCLK / 4;
+         when 16#6#          => return HCLK / 8;
+         when 16#7#          => return HCLK / 16;
+         when others         => raise Program_Error;
       end case;
    end Get_PCLK1;
-
-   ----------------
-   -- Get_PCLK2  --
-   ----------------
-   --  HCLK divided by the APB2 prescaler (PPRE2, bits 11..13 of RCC_CFGR).
-   --  See Get_PCLK1 for encoding notes; Arr(1) gives the high 3 bits.
 
    function Get_PCLK2 return Natural is
       HCLK  : constant Natural := Get_HCLK;
@@ -72,83 +94,263 @@ package body Clock_Tree is
    begin
       case PPRE2 is
          when 16#0# .. 16#3# => return HCLK;
-         when 16#4#           => return HCLK / 2;
-         when 16#5#           => return HCLK / 4;
-         when 16#6#           => return HCLK / 8;
-         when others          => return HCLK / 16;
+         when 16#4#          => return HCLK / 2;
+         when 16#5#          => return HCLK / 4;
+         when 16#6#          => return HCLK / 8;
+         when 16#7#          => return HCLK / 16;
+         when others         => raise Program_Error;
       end case;
    end Get_PCLK2;
 
-   --------------------
-   -- Get_SPI_Clock  --
-   --------------------
-   --  SPI1 is on APB2; SPI2 and SPI3 are on APB1.
-   --  CCIPR1.SPISEL selects the kernel clock for all SPI peripherals:
-   --    00 = PCLK (domain-appropriate: APB2 for SPI1, APB1 for SPI2/3)
-   --    01 = SYSCLK
-   --    10 = HSI16
-   --    11 = reserved (hardware fault if seen at runtime)
+   --  ----------------------------------------------------------------------
+   --  Peripheral kernel clocks
+   --
+   --  NOTE: SPISEL is a single shared field — all three SPIs use the same
+   --  kernel source. The per-function dispatch is only because SPI1 (APB2)
+   --  vs SPI2/SPI3 (APB1) take different bus clocks when SPISEL = 0.
+   --  ----------------------------------------------------------------------
 
-   function Get_SPI_Clock
-     (Id : STM32G431_SPI.SPI_Id) return Natural
-   is
+   function Get_SPI1_Clock return Natural is
    begin
       case RCC.RCC_Periph.CCIPR1.SPISEL is
-         when 0 =>
-            case Id is
-               when STM32G431_SPI.SPI_1                        => return Get_PCLK2;
-               when STM32G431_SPI.SPI_2 | STM32G431_SPI.SPI_3 => return Get_PCLK1;
-            end case;
+         when 0      => return Get_PCLK2;
          when 1      => return SYSCLK_Freq;
          when 2      => return HSI16_Freq;
-         when others => raise Program_Error;  --  Reserved encoding; RCC state is corrupt
+         when others => raise Program_Error;
       end case;
-   end Get_SPI_Clock;
+   end Get_SPI1_Clock;
 
-   ----------------------
-   -- Get_USART_Clock  --
-   ----------------------
-   --  USART1 is on APB2; USART2, USART3, and UART4 are on APB1.
-   --  CCIPRx.USARTxSEL per-peripheral kernel clock mux:
-   --    00 = PCLK (domain-appropriate)
-   --    01 = SYSCLK
-   --    10 = HSI16
-   --    11 = LSE (32.768 kHz -- only viable for very low baud rates)
-
-   function Get_USART_Clock
-     (Id : STM32G431_USART.Usart_Id) return Natural
-   is
+   function Get_SPI2_Clock return Natural is
    begin
-      case Id is
-         when STM32G431_USART.USART_1 =>
-            case RCC.RCC_Periph.CCIPR1.USART1SEL is
-               when 0      => return Get_PCLK2;
-               when 1      => return SYSCLK_Freq;
-               when 2      => return HSI16_Freq;
-               when others => return LSE_Freq;
-            end case;
-         when STM32G431_USART.USART_2 =>
-            case RCC.RCC_Periph.CCIPR1.USART2SEL is
-               when 0      => return Get_PCLK1;
-               when 1      => return SYSCLK_Freq;
-               when 2      => return HSI16_Freq;
-               when others => return LSE_Freq;
-            end case;
-         when STM32G431_USART.USART_3 =>
-            case RCC.RCC_Periph.CCIPR1.USART3SEL is
-               when 0      => return Get_PCLK1;
-               when 1      => return SYSCLK_Freq;
-               when 2      => return HSI16_Freq;
-               when others => return LSE_Freq;
-            end case;
-         when STM32G431_USART.UART_4 =>
-            case RCC.RCC_Periph.CCIPR1.UART4SEL is
-               when 0      => return Get_PCLK1;
-               when 1      => return SYSCLK_Freq;
-               when 2      => return HSI16_Freq;
-               when others => return LSE_Freq;
-            end case;
+      case RCC.RCC_Periph.CCIPR1.SPISEL is
+         when 0      => return Get_PCLK1;
+         when 1      => return SYSCLK_Freq;
+         when 2      => return HSI16_Freq;
+         when others => raise Program_Error;
       end case;
-   end Get_USART_Clock;
+   end Get_SPI2_Clock;
+
+   function Get_SPI3_Clock return Natural is
+   begin
+      case RCC.RCC_Periph.CCIPR1.SPISEL is
+         when 0      => return Get_PCLK1;
+         when 1      => return SYSCLK_Freq;
+         when 2      => return HSI16_Freq;
+         when others => raise Program_Error;
+      end case;
+   end Get_SPI3_Clock;
+
+   function Get_I2C1_Clock return Natural is
+   begin
+      case RCC.RCC_Periph.CCIPR1.I2C1SEL is
+         when 0      => return Get_PCLK1;
+         when 1      => return SYSCLK_Freq;
+         when 2      => return HSI16_Freq;
+         when others => raise Program_Error;
+      end case;
+   end Get_I2C1_Clock;
+
+   function Get_I2C2_Clock return Natural is
+   begin
+      case RCC.RCC_Periph.CCIPR1.I2C2SEL is
+         when 0      => return Get_PCLK1;
+         when 1      => return SYSCLK_Freq;
+         when 2      => return HSI16_Freq;
+         when others => raise Program_Error;
+      end case;
+   end Get_I2C2_Clock;
+
+   function Get_I2C3_Clock return Natural is
+   begin
+      case RCC.RCC_Periph.CCIPR1.I2C3SEL is
+         when 0      => return Get_PCLK1;
+         when 1      => return SYSCLK_Freq;
+         when 2      => return HSI16_Freq;
+         when others => raise Program_Error;
+      end case;
+   end Get_I2C3_Clock;
+
+   function Get_USART1_Clock return Natural is
+   begin
+      case RCC.RCC_Periph.CCIPR1.USART1SEL is
+         when 0 => return Get_PCLK2;
+         when 1 => return SYSCLK_Freq;
+         when 2 => return HSI16_Freq;
+         when 3 => return LSE_Freq;
+      end case;
+   end Get_USART1_Clock;
+
+   function Get_USART2_Clock return Natural is
+   begin
+      case RCC.RCC_Periph.CCIPR1.USART2SEL is
+         when 0 => return Get_PCLK1;
+         when 1 => return SYSCLK_Freq;
+         when 2 => return HSI16_Freq;
+         when 3 => return LSE_Freq;
+      end case;
+   end Get_USART2_Clock;
+
+   function Get_USART3_Clock return Natural is
+   begin
+      case RCC.RCC_Periph.CCIPR1.USART3SEL is
+         when 0 => return Get_PCLK1;
+         when 1 => return SYSCLK_Freq;
+         when 2 => return HSI16_Freq;
+         when 3 => return LSE_Freq;
+      end case;
+   end Get_USART3_Clock;
+
+   function Get_UART4_Clock return Natural is
+   begin
+      case RCC.RCC_Periph.CCIPR1.UART4SEL is
+         when 0 => return Get_PCLK1;
+         when 1 => return SYSCLK_Freq;
+         when 2 => return HSI16_Freq;
+         when 3 => return LSE_Freq;
+      end case;
+   end Get_UART4_Clock;
+
+   --  ----------------------------------------------------------------------
+   --  RCC enable hooks
+   --
+   --  Field name notes (SVD bugs in stm32g431xx.svd):
+   --    APB1ENR1.SPI3EN is named SP3EN in the SVD
+   --    APB1ENR1.I2C3EN is named I2C3   in the SVD
+   --    APB1RSTR1.I2C3RST is named I2C3 in the SVD
+   --  These names should be patched in the SVD upstream, but for now we
+   --  use what svd2ada emits.
+   --  ----------------------------------------------------------------------
+
+   procedure Enable_SPI1 is
+   begin
+      RCC.RCC_Periph.APB2ENR.SPI1EN := 1;
+   end Enable_SPI1;
+
+   procedure Enable_SPI2 is
+   begin
+      RCC.RCC_Periph.APB1ENR1.SPI2EN := 1;
+   end Enable_SPI2;
+
+   procedure Enable_SPI3 is
+   begin
+      RCC.RCC_Periph.APB1ENR1.SP3EN := 1;  --  SVD: should be SPI3EN
+   end Enable_SPI3;
+
+   procedure Enable_USART1 is
+   begin
+      RCC.RCC_Periph.APB2ENR.USART1EN := 1;
+   end Enable_USART1;
+
+   procedure Enable_USART2 is
+   begin
+      RCC.RCC_Periph.APB1ENR1.USART2EN := 1;
+   end Enable_USART2;
+
+   procedure Enable_USART3 is
+   begin
+      RCC.RCC_Periph.APB1ENR1.USART3EN := 1;
+   end Enable_USART3;
+
+   procedure Enable_UART4 is
+   begin
+      RCC.RCC_Periph.APB1ENR1.UART4EN := 1;
+   end Enable_UART4;
+
+   procedure Enable_I2C1 is
+   begin
+      RCC.RCC_Periph.APB1ENR1.I2C1EN := 1;
+   end Enable_I2C1;
+
+   procedure Enable_I2C2 is
+   begin
+      RCC.RCC_Periph.APB1ENR1.I2C2EN := 1;
+   end Enable_I2C2;
+
+   procedure Enable_I2C3 is
+   begin
+      RCC.RCC_Periph.APB1ENR1.I2C3 := 1;  --  SVD: should be I2C3EN
+   end Enable_I2C3;
+
+   --  ----------------------------------------------------------------------
+   --  RCC reset hooks
+   --  ----------------------------------------------------------------------
+
+   procedure Brief_Delay is
+   begin
+      for K in 1 .. 8 loop
+         null;
+         pragma Inspection_Point (K);
+      end loop;
+   end Brief_Delay;
+
+   procedure Reset_SPI1 is
+   begin
+      RCC.RCC_Periph.APB2RSTR.SPI1RST := 1;
+      Brief_Delay;
+      RCC.RCC_Periph.APB2RSTR.SPI1RST := 0;
+   end Reset_SPI1;
+
+   procedure Reset_SPI2 is
+   begin
+      RCC.RCC_Periph.APB1RSTR1.SPI2RST := 1;
+      Brief_Delay;
+      RCC.RCC_Periph.APB1RSTR1.SPI2RST := 0;
+   end Reset_SPI2;
+
+   procedure Reset_SPI3 is
+   begin
+      RCC.RCC_Periph.APB1RSTR1.SPI3RST := 1;
+      Brief_Delay;
+      RCC.RCC_Periph.APB1RSTR1.SPI3RST := 0;
+   end Reset_SPI3;
+
+   procedure Reset_USART1 is
+   begin
+      RCC.RCC_Periph.APB2RSTR.USART1RST := 1;
+      Brief_Delay;
+      RCC.RCC_Periph.APB2RSTR.USART1RST := 0;
+   end Reset_USART1;
+
+   procedure Reset_USART2 is
+   begin
+      RCC.RCC_Periph.APB1RSTR1.USART2RST := 1;
+      Brief_Delay;
+      RCC.RCC_Periph.APB1RSTR1.USART2RST := 0;
+   end Reset_USART2;
+
+   procedure Reset_USART3 is
+   begin
+      RCC.RCC_Periph.APB1RSTR1.USART3RST := 1;
+      Brief_Delay;
+      RCC.RCC_Periph.APB1RSTR1.USART3RST := 0;
+   end Reset_USART3;
+
+   procedure Reset_UART4 is
+   begin
+      RCC.RCC_Periph.APB1RSTR1.UART4RST := 1;
+      Brief_Delay;
+      RCC.RCC_Periph.APB1RSTR1.UART4RST := 0;
+   end Reset_UART4;
+
+   procedure Reset_I2C1 is
+   begin
+      RCC.RCC_Periph.APB1RSTR1.I2C1RST := 1;
+      Brief_Delay;
+      RCC.RCC_Periph.APB1RSTR1.I2C1RST := 0;
+   end Reset_I2C1;
+
+   procedure Reset_I2C2 is
+   begin
+      RCC.RCC_Periph.APB1RSTR1.I2C2RST := 1;
+      Brief_Delay;
+      RCC.RCC_Periph.APB1RSTR1.I2C2RST := 0;
+   end Reset_I2C2;
+
+   procedure Reset_I2C3 is
+   begin
+      RCC.RCC_Periph.APB1RSTR1.I2C3 := 1;  --  SVD: should be I2C3RST
+      Brief_Delay;
+      RCC.RCC_Periph.APB1RSTR1.I2C3 := 0;
+   end Reset_I2C3;
 
 end Clock_Tree;
