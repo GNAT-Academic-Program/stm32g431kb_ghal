@@ -95,8 +95,6 @@ package body STM32G431_I2C is
             Dev.P.TIMINGR.SDADEL := 0;
             Dev.P.TIMINGR.SCLH   := 16#03#;
             Dev.P.TIMINGR.SCLL   := 16#05#;
-         when I2C_Types.High_Speed_Mode =>
-            raise I2C_Types.Bus_Fault with "Init: High_Speed_Mode not supported";
       end case;
 
       Dev.P.CR1.ANFOFF := 0;
